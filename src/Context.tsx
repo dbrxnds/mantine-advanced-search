@@ -16,8 +16,6 @@ export function AdvancedSearchInputProvider({ children }: PropsWithChildren) {
   const [searchQueryString, setSearchQueryString] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  console.log(searchQueryString.length, inputRef.current?.selectionEnd);
-
   const getCaretPosition = () => inputRef.current?.selectionStart ?? -1;
 
   const addFilterKey = (key: string) => {
@@ -41,8 +39,6 @@ export function AdvancedSearchInputProvider({ children }: PropsWithChildren) {
 
       return newParts.join(" ");
     });
-
-    inputRef.current?.dispatchEvent(new KeyboardEvent("keypress", { key: "ArrowRight" }));
   };
 
   const addFilterValue = (value: string) => {
@@ -68,8 +64,6 @@ export function AdvancedSearchInputProvider({ children }: PropsWithChildren) {
 
       return prev;
     });
-
-    inputRef.current?.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
   };
 
   return (
