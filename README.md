@@ -1,5 +1,5 @@
-# Mantine Vite template
+# Mantine Advanced Search PoC
 
-Get started with the template by clicking `Use this template` button on the top of the page.
+I got the idea from [OpenStatus' "data-table-filters"](https://github.com/openstatusHQ/data-table-filters) for Shadcn but adjusted to use Mantine components, and clean up the code so it's a more user-friendly API. 
 
-[Documentation](https://mantine.dev/guides/vite/)
+
