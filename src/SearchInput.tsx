@@ -1,7 +1,7 @@
 import { Combobox, ComboboxStore, TextInput, useCombobox } from "@mantine/core";
-import { useInputState } from "@mantine/hooks";
-import { createContext, PropsWithChildren, ReactNode } from "react";
+import { createContext, forwardRef, PropsWithChildren, useContext } from "react";
 import { AdvancedSearchInputProvider, useAdvancedSearchInputContext } from "./Context";
+import { useMergedRef } from "@mantine/hooks";
 
 function defaultReduceObj<T extends string>(fields: T[]) {
   return fields.reduce((acc, field) => {
@@ -10,12 +10,12 @@ function defaultReduceObj<T extends string>(fields: T[]) {
   }, {} as Record<T, string[]>);
 }
 
-function parseSearchQuery<T extends string>(query: string, fields: T[]) {
+export function parseSearchQuery<T extends string>(query: string, fields: T[]) {
   const parts = query.split(" ");
 
   const normalized = parts.reduce((acc, part) => {
     const [key, value] = part.split(":");
-    if (fields.includes(key as T)) {
+    if (fields.includes(key as T) && value) {
       const _key = key as T;
       acc[_key] = [...(acc[_key] || []), value];
     }
@@ -24,98 +24,93 @@ function parseSearchQuery<T extends string>(query: string, fields: T[]) {
 
   return {
     normalized,
-    remainingSearchQuery: parts.filter((part) => !part.includes(":")).join(" "),
+    remainingSearchQuery: parts
+      .filter((part) => !part.includes(":"))
+      .join(" ")
+      .trim(),
   };
 }
 
-console.log(parseSearchQuery("name:John age:30 age:28 test", ["name", "age", "url"]));
-
-interface Filter<Key extends string> {
-  key: Key;
-  options: string[];
-}
-
 interface AdvancedSearchInputProps<Key extends string> {
-  filters: Filter<Key>[];
+  filters: Key[];
 }
 
-export function AdvancedSearchInput<Key extends string>(props: AdvancedSearchInputProps<Key>) {
-  return (
-    <AdvancedSearchInputProvider>
-      <_AdvancedSearchInput {...props} />
-    </AdvancedSearchInputProvider>
-  );
-}
+const FiltersContext = createContext<string[]>([]);
+const ComboboxStoreContext = createContext<ComboboxStore | null>(null);
 
-export function _AdvancedSearchInput<Key extends string>({ filters }: AdvancedSearchInputProps<Key>) {
-  const { inputRef, searchQueryString, setSearchQueryString } = useAdvancedSearchInputContext();
-
+export function AdvancedSearchInputWrapper<Key extends string>({
+  filters,
+  children,
+}: PropsWithChildren<AdvancedSearchInputProps<Key>>) {
   const combobox = useCombobox();
 
   return (
-    <FilterDropdown store={combobox} filters={filters}>
-      <TextInput
-        value={searchQueryString}
-        onChange={(e) => setSearchQueryString(e.currentTarget.value)}
-        onFocus={() => combobox.openDropdown()}
-        onBlur={() => combobox.closeDropdown()}
-        ref={inputRef}
-      />
-    </FilterDropdown>
+    <ComboboxStoreContext.Provider value={combobox}>
+      <FiltersContext.Provider value={filters}>
+        <Combobox store={combobox}>
+          <AdvancedSearchInputProvider>{children}</AdvancedSearchInputProvider>
+        </Combobox>
+      </FiltersContext.Provider>
+    </ComboboxStoreContext.Provider>
   );
 }
 
-function FilterDropdown<Key extends string>({
-  children,
-  store,
-  filters,
-}: PropsWithChildren<
-  Pick<AdvancedSearchInputProps<Key>, "filters"> & {
-    store: ComboboxStore;
-  }
->) {
-  const { searchQueryString, getCaretPosition } = useAdvancedSearchInputContext();
+export const AdvancedSearchInput = forwardRef<unknown, HTMLInputElement>((_, ref) => {
+  const { inputRef, searchQueryString, setSearchQueryString } = useAdvancedSearchInputContext();
+  const combobox = useContext(ComboboxStoreContext)!;
 
-  const filterOptionsByKey = filters.reduce((acc, filter) => {
-    acc[filter.key] = filter.options.map((option) => <FilterValueComboboxOption value={option} />);
-
-    return acc;
-  }, {} as Record<Key, ReactNode>);
-
-  const currentWord = getWordByCaretPosition({ value: searchQueryString, caretPosition: getCaretPosition() });
-  const currentWordMatchesFilterKey = filters.find((filter) => `${filter.key}:` === currentWord) !== undefined;
-  const currentWordWithoutColon = currentWord.split(":")[0];
-
-  const dropDownContent = currentWordMatchesFilterKey
-    ? filterOptionsByKey[currentWordWithoutColon as Key]
-    : filters.map((filter) => <FilterKeyComboboxOption filter={filter} key={filter.key} />);
+  const mergedRef = useMergedRef(inputRef, ref);
 
   return (
-    <Combobox store={store}>
-      <Combobox.Target>{children}</Combobox.Target>
-      <Combobox.Dropdown>
-        <Combobox.Options>{dropDownContent}</Combobox.Options>
-      </Combobox.Dropdown>
-    </Combobox>
+    <TextInput
+      value={searchQueryString}
+      onChange={(e) => setSearchQueryString(e.currentTarget.value)}
+      onFocus={() => combobox.openDropdown()}
+      onBlur={() => combobox.closeDropdown()}
+      ref={mergedRef}
+    />
   );
+});
+
+export function FilterKeyComboboxOptions({ children }: PropsWithChildren) {
+  const filters = useContext(FiltersContext);
+  const { searchQueryString, getCaretPosition } = useAdvancedSearchInputContext();
+
+  const currentWord = getWordByCaretPosition({ value: searchQueryString, caretPosition: getCaretPosition() });
+  const currentWordMatchesFilterKey = filters.find((filter) => `${filter}:` === currentWord) !== undefined;
+
+  if (currentWordMatchesFilterKey) return null;
+
+  return <Combobox.Options>{children}</Combobox.Options>;
 }
 
-function FilterKeyComboboxOption<Key extends string>({ filter }: { filter: Filter<Key> }) {
+export function FilterKeyComboboxOption({ value, children }: PropsWithChildren<{ value: string }>) {
   const { addFilterKey } = useAdvancedSearchInputContext();
 
   return (
-    <Combobox.Option value={filter.key} onClick={() => addFilterKey(filter.key)}>
-      {filter.key}
+    <Combobox.Option value={value} onClick={() => addFilterKey(value)}>
+      {children}
     </Combobox.Option>
   );
 }
 
-function FilterValueComboboxOption({ value }: { value: string }) {
+export function FilterValueComboboxOptions({ children, belongsToKey }: PropsWithChildren<{ belongsToKey: string }>) {
+  const { searchQueryString, getCaretPosition } = useAdvancedSearchInputContext();
+
+  const currentWord = getWordByCaretPosition({ value: searchQueryString, caretPosition: getCaretPosition() });
+  const currentWordMatchesFilterKey = `${belongsToKey}:` === currentWord;
+
+  if (!currentWordMatchesFilterKey) return null;
+
+  return <Combobox.Options>{children}</Combobox.Options>;
+}
+
+export function FilterValueComboboxOption({ value, children }: PropsWithChildren<{ value: string }>) {
   const { addFilterValue } = useAdvancedSearchInputContext();
 
   return (
     <Combobox.Option value={value} onClick={() => addFilterValue(value)}>
-      {value}
+      {children}
     </Combobox.Option>
   );
 }
